@@ -192,8 +192,7 @@ func (m *Manager) SyncCh() <-chan map[string][]*targetgroup.Group {
 	return m.syncCh
 }
 
-// ApplyConfig checks if discovery provider with supplied config is already running and keeps them as is.
-// Remaining providers are then stopped and new required providers are started using the provided config.
+// 加载Yaml数据，进入Manager的Providers里面
 func (m *Manager) ApplyConfig(cfg map[string]Configs) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -340,10 +339,13 @@ func (m *Manager) updater(ctx context.Context, p *Provider, updates chan []*targ
 	}
 }
 
+//
 func (m *Manager) sender() {
+	// ticker是一个计时器，每5s中检查一次
 	ticker := time.NewTicker(m.updatert)
 	defer ticker.Stop()
 
+	// 不停地循环，只要一到时间，就进入第二个case
 	for {
 		select {
 		case <-m.ctx.Done():
