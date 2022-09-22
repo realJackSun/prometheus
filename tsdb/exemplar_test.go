@@ -22,11 +22,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/exemplar"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 )
 
@@ -112,7 +112,7 @@ func TestAddExemplar(t *testing.T) {
 	}
 
 	require.NoError(t, es.AddExemplar(l, e))
-	require.Equal(t, es.index[l.String()].newest, 0, "exemplar was not stored correctly")
+	require.Equal(t, es.index[string(l.Bytes(nil))].newest, 0, "exemplar was not stored correctly")
 
 	e2 := exemplar.Exemplar{
 		Labels: labels.Labels{
@@ -126,8 +126,8 @@ func TestAddExemplar(t *testing.T) {
 	}
 
 	require.NoError(t, es.AddExemplar(l, e2))
-	require.Equal(t, es.index[l.String()].newest, 1, "exemplar was not stored correctly, location of newest exemplar for series in index did not update")
-	require.True(t, es.exemplars[es.index[l.String()].newest].exemplar.Equals(e2), "exemplar was not stored correctly, expected %+v got: %+v", e2, es.exemplars[es.index[l.String()].newest].exemplar)
+	require.Equal(t, es.index[string(l.Bytes(nil))].newest, 1, "exemplar was not stored correctly, location of newest exemplar for series in index did not update")
+	require.True(t, es.exemplars[es.index[string(l.Bytes(nil))].newest].exemplar.Equals(e2), "exemplar was not stored correctly, expected %+v got: %+v", e2, es.exemplars[es.index[string(l.Bytes(nil))].newest].exemplar)
 
 	require.NoError(t, es.AddExemplar(l, e2), "no error is expected attempting to add duplicate exemplar")
 
@@ -300,7 +300,7 @@ func TestSelectExemplar_TimeRange(t *testing.T) {
 			Ts:    int64(101 + i),
 		})
 		require.NoError(t, err)
-		require.Equal(t, es.index[l.String()].newest, i, "exemplar was not stored correctly")
+		require.Equal(t, es.index[string(l.Bytes(nil))].newest, i, "exemplar was not stored correctly")
 	}
 
 	m, err := labels.NewMatcher(labels.MatchEqual, l[0].Name, l[0].Value)
@@ -330,8 +330,8 @@ func TestSelectExemplar_DuplicateSeries(t *testing.T) {
 	}
 
 	l := labels.Labels{
-		{Name: "service", Value: "asdf"},
 		{Name: "cluster", Value: "us-central1"},
+		{Name: "service", Value: "asdf"},
 	}
 
 	// Lets just assume somehow the PromQL expression generated two separate lists of matchers,
@@ -376,14 +376,14 @@ func TestIndexOverwrite(t *testing.T) {
 
 	// Ensure index GC'ing is taking place, there should no longer be any
 	// index entry for series l1 since we just wrote two exemplars for series l2.
-	_, ok := es.index[l1.String()]
+	_, ok := es.index[string(l1.Bytes(nil))]
 	require.False(t, ok)
-	require.Equal(t, &indexEntry{1, 0, l2}, es.index[l2.String()])
+	require.Equal(t, &indexEntry{1, 0, l2}, es.index[string(l2.Bytes(nil))])
 
 	err = es.AddExemplar(l1, exemplar.Exemplar{Value: 4, Ts: 4})
 	require.NoError(t, err)
 
-	i := es.index[l2.String()]
+	i := es.index[string(l2.Bytes(nil))]
 	require.Equal(t, &indexEntry{0, 0, l2}, i)
 }
 
@@ -413,7 +413,7 @@ func TestResize(t *testing.T) {
 			expectedMigrated:  50,
 		},
 		{
-			name:              "Zero",
+			name:              "ShrinkToZero",
 			startSize:         100,
 			newCount:          0,
 			expectedSeries:    []int{},
@@ -436,11 +436,18 @@ func TestResize(t *testing.T) {
 			notExpectedSeries: []int{},
 			expectedMigrated:  0,
 		},
+		{
+			name:              "GrowFromZero",
+			startSize:         0,
+			newCount:          10,
+			expectedSeries:    []int{},
+			notExpectedSeries: []int{},
+			expectedMigrated:  0,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-
 			exs, err := NewCircularExemplarStorage(tc.startSize, eMetrics)
 			require.NoError(t, err)
 			es := exs.(*CircularExemplarStorage)
@@ -448,7 +455,8 @@ func TestResize(t *testing.T) {
 			for i := 0; int64(i) < tc.startSize; i++ {
 				err = es.AddExemplar(labels.FromStrings("service", strconv.Itoa(i)), exemplar.Exemplar{
 					Value: float64(i),
-					Ts:    int64(i)})
+					Ts:    int64(i),
+				})
 				require.NoError(t, err)
 			}
 
@@ -477,16 +485,32 @@ func TestResize(t *testing.T) {
 	}
 }
 
-func BenchmarkAddExemplar(t *testing.B) {
-	exs, err := NewCircularExemplarStorage(int64(t.N), eMetrics)
-	require.NoError(t, err)
-	es := exs.(*CircularExemplarStorage)
+func BenchmarkAddExemplar(b *testing.B) {
+	// We need to include these labels since we do length calculation
+	// before adding.
+	exLabels := labels.Labels{{Name: "traceID", Value: "89620921"}}
 
-	for i := 0; i < t.N; i++ {
-		l := labels.FromStrings("service", strconv.Itoa(i))
+	for _, n := range []int{10000, 100000, 1000000} {
+		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+			for j := 0; j < b.N; j++ {
+				b.StopTimer()
+				exs, err := NewCircularExemplarStorage(int64(n), eMetrics)
+				require.NoError(b, err)
+				es := exs.(*CircularExemplarStorage)
+				l := labels.Labels{{Name: "service", Value: strconv.Itoa(0)}}
+				b.StartTimer()
 
-		err = es.AddExemplar(l, exemplar.Exemplar{Value: float64(i), Ts: int64(i)})
-		require.NoError(t, err)
+				for i := 0; i < n; i++ {
+					if i%100 == 0 {
+						l = labels.Labels{{Name: "service", Value: strconv.Itoa(i)}}
+					}
+					err = es.AddExemplar(l, exemplar.Exemplar{Value: float64(i), Ts: int64(i), Labels: exLabels})
+					if err != nil {
+						require.NoError(b, err)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -524,24 +548,24 @@ func BenchmarkResizeExemplars(b *testing.B) {
 	}
 
 	for _, tc := range testCases {
-		exs, err := NewCircularExemplarStorage(tc.startSize, eMetrics)
-		require.NoError(b, err)
-		es := exs.(*CircularExemplarStorage)
+		b.Run(fmt.Sprintf("%s-%d-to-%d", tc.name, tc.startSize, tc.endSize), func(b *testing.B) {
+			for j := 0; j < b.N; j++ {
+				b.StopTimer()
+				exs, err := NewCircularExemplarStorage(tc.startSize, eMetrics)
+				require.NoError(b, err)
+				es := exs.(*CircularExemplarStorage)
 
-		for i := 0; i < int(float64(tc.startSize)*float64(1.5)); i++ {
-			l := labels.FromStrings("service", strconv.Itoa(i))
+				for i := 0; i < int(float64(tc.startSize)*float64(1.5)); i++ {
+					l := labels.FromStrings("service", strconv.Itoa(i))
 
-			err = es.AddExemplar(l, exemplar.Exemplar{Value: float64(i), Ts: int64(i)})
-			require.NoError(b, err)
-		}
-		saveIndex := es.index
-		saveExemplars := es.exemplars
-
-		b.Run(fmt.Sprintf("%s-%d-to-%d", tc.name, tc.startSize, tc.endSize), func(t *testing.B) {
-			es.index = saveIndex
-			es.exemplars = saveExemplars
-			b.ResetTimer()
-			es.Resize(tc.endSize)
+					err = es.AddExemplar(l, exemplar.Exemplar{Value: float64(i), Ts: int64(i)})
+					if err != nil {
+						require.NoError(b, err)
+					}
+				}
+				b.StartTimer()
+				es.Resize(tc.endSize)
+			}
 		})
 	}
 }

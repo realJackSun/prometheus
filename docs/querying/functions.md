@@ -103,6 +103,12 @@ for each of the given times in UTC. Returned values are from 1 to 31.
 each of the given times in UTC. Returned values are from 0 to 6, where 0 means
 Sunday etc.
 
+## `day_of_year()`
+
+`day_of_year(v=vector(time()) instant-vector)` returns the day of the year for
+each of the given times in UTC. Returned values are from 1 to 365 for non-leap years,
+and 1 to 366 in leap years.
+
 ## `days_in_month()`
 
 `days_in_month(v=vector(time()) instant-vector)` returns number of days in the
@@ -130,6 +136,8 @@ delta(cpu_temp_celsius{host="zeus"}[2h])
 
 `deriv(v range-vector)` calculates the per-second derivative of the time series in a range
 vector `v`, using [simple linear regression](https://en.wikipedia.org/wiki/Simple_linear_regression).
+The range vector must have at least two samples in order to perform the calculation. When `+Inf` or 
+`-Inf` are found in the range vector, the slope and offset value calculated will be `NaN`.
 
 `deriv` should only be used with gauges.
 
@@ -192,7 +200,7 @@ bucket. Otherwise, the upper bound of the lowest bucket is returned
 for quantiles located in the lowest bucket.
 
 If `b` has 0 observations, `NaN` is returned. If `b` contains fewer than two buckets,
-`NaN` is returned. For φ < 0, `-Inf` is returned. For φ > 1, `+Inf` is returned.
+`NaN` is returned. For φ < 0, `-Inf` is returned. For φ > 1, `+Inf` is returned. For φ = `NaN`, `NaN` is returned.
 
 ## `holt_winters()`
 
@@ -329,6 +337,9 @@ January etc.
 `predict_linear(v range-vector, t scalar)` predicts the value of time series
 `t` seconds from now, based on the range vector `v`, using [simple linear
 regression](https://en.wikipedia.org/wiki/Simple_linear_regression).
+The range vector must have at least two samples in order to perform the 
+calculation. When `+Inf` or `-Inf` are found in the range vector, 
+the slope and offset value calculated will be `NaN`.
 
 `predict_linear` should only be used with gauges.
 
@@ -405,8 +416,6 @@ expression is to be evaluated.
 `timestamp(v instant-vector)` returns the timestamp of each of the samples of
 the given vector as the number of seconds since January 1, 1970 UTC.
 
-*This function was added in Prometheus 2.0*
-
 ## `vector()`
 
 `vector(s scalar)` returns the scalar `s` as a vector with no labels.
@@ -434,3 +443,26 @@ over time and return an instant vector with per-series aggregation results:
 
 Note that all values in the specified interval have the same weight in the
 aggregation even if the values are not equally spaced throughout the interval.
+
+## Trigonometric Functions
+
+The trigonometric functions work in radians:
+
+- `acos(v instant-vector)`: calculates the arccosine of all elements in `v` ([special cases](https://pkg.go.dev/math#Acos)).
+- `acosh(v instant-vector)`: calculates the inverse hyperbolic cosine of all elements in `v` ([special cases](https://pkg.go.dev/math#Acosh)).
+- `asin(v instant-vector)`: calculates the arcsine of all elements in `v` ([special cases](https://pkg.go.dev/math#Asin)).
+- `asinh(v instant-vector)`: calculates the inverse hyperbolic sine of all elements in `v` ([special cases](https://pkg.go.dev/math#Asinh)).
+- `atan(v instant-vector)`: calculates the arctangent of all elements in `v` ([special cases](https://pkg.go.dev/math#Atan)).
+- `atanh(v instant-vector)`: calculates the inverse hyperbolic tangent of all elements in `v` ([special cases](https://pkg.go.dev/math#Atanh)).
+- `cos(v instant-vector)`: calculates the cosine of all elements in `v` ([special cases](https://pkg.go.dev/math#Cos)).
+- `cosh(v instant-vector)`: calculates the hyperbolic cosine of all elements in `v` ([special cases](https://pkg.go.dev/math#Cosh)).
+- `sin(v instant-vector)`: calculates the sine of all elements in `v` ([special cases](https://pkg.go.dev/math#Sin)).
+- `sinh(v instant-vector)`: calculates the hyperbolic sine of all elements in `v` ([special cases](https://pkg.go.dev/math#Sinh)).
+- `tan(v instant-vector)`: calculates the tangent of all elements in `v` ([special cases](https://pkg.go.dev/math#Tan)).
+- `tanh(v instant-vector)`: calculates the hyperbolic tangent of all elements in `v` ([special cases](https://pkg.go.dev/math#Tanh)).
+
+The following are useful for converting between degrees and radians:
+
+- `deg(v instant-vector)`: converts radians to degrees for all elements in `v`.
+- `pi()`: returns pi.
+- `rad(v instant-vector)`: converts degrees to radians for all elements in `v`.

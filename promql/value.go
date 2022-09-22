@@ -15,13 +15,12 @@ package promql
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/pkg/errors"
-
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -88,6 +87,14 @@ func (p Point) String() string {
 }
 
 // MarshalJSON implements json.Marshaler.
+//
+// JSON marshaling is only needed for the HTTP API. Since Point is such a
+// frequently marshaled type, it gets an optimized treatment directly in
+// web/api/v1/api.go. Therefore, this method is unused within Prometheus. It is
+// still provided here as convenience for debugging and for other users of this
+// code. Also note that the different marshaling implementations might lead to
+// slightly different results in terms of formatting and rounding of the
+// timestamp.
 func (p Point) MarshalJSON() ([]byte, error) {
 	v := strconv.FormatFloat(p.V, 'f', -1, 64)
 	return json.Marshal([...]interface{}{float64(p.T) / 1000, v})
@@ -131,15 +138,22 @@ func (vec Vector) String() string {
 // Such a behavior is semantically undefined
 // https://github.com/prometheus/prometheus/issues/4562
 func (vec Vector) ContainsSameLabelset() bool {
-	l := make(map[uint64]struct{}, len(vec))
-	for _, s := range vec {
-		hash := s.Metric.Hash()
-		if _, ok := l[hash]; ok {
-			return true
+	switch len(vec) {
+	case 0, 1:
+		return false
+	case 2:
+		return vec[0].Metric.Hash() == vec[1].Metric.Hash()
+	default:
+		l := make(map[uint64]struct{}, len(vec))
+		for _, ss := range vec {
+			hash := ss.Metric.Hash()
+			if _, ok := l[hash]; ok {
+				return true
+			}
+			l[hash] = struct{}{}
 		}
-		l[hash] = struct{}{}
+		return false
 	}
-	return false
 }
 
 // Matrix is a slice of Series that implements sort.Interface and
@@ -174,15 +188,22 @@ func (m Matrix) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
 // Such a behavior is semantically undefined.
 // https://github.com/prometheus/prometheus/issues/4562
 func (m Matrix) ContainsSameLabelset() bool {
-	l := make(map[uint64]struct{}, len(m))
-	for _, ss := range m {
-		hash := ss.Metric.Hash()
-		if _, ok := l[hash]; ok {
-			return true
+	switch len(m) {
+	case 0, 1:
+		return false
+	case 2:
+		return m[0].Metric.Hash() == m[1].Metric.Hash()
+	default:
+		l := make(map[uint64]struct{}, len(m))
+		for _, ss := range m {
+			hash := ss.Metric.Hash()
+			if _, ok := l[hash]; ok {
+				return true
+			}
+			l[hash] = struct{}{}
 		}
-		l[hash] = struct{}{}
+		return false
 	}
-	return false
 }
 
 // Result holds the resulting value of an execution or an error

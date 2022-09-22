@@ -2,9 +2,9 @@ import React, { FC } from 'react';
 import Navigation from './Navbar';
 import { Container } from 'reactstrap';
 
-import { Router, Redirect } from '@reach/router';
-import useMedia from 'use-media';
+import { BrowserRouter as Router, Redirect, Switch, Route } from 'react-router-dom';
 import {
+  AgentPage,
   AlertsPage,
   ConfigPage,
   FlagsPage,
@@ -19,17 +19,20 @@ import { PathPrefixContext } from './contexts/PathPrefixContext';
 import { ThemeContext, themeName, themeSetting } from './contexts/ThemeContext';
 import { Theme, themeLocalStorageKey } from './Theme';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import useMedia from './hooks/useMedia';
 
 interface AppProps {
   consolesLink: string | null;
+  agentMode: boolean;
 }
 
-const App: FC<AppProps> = ({ consolesLink }) => {
+const App: FC<AppProps> = ({ consolesLink, agentMode }) => {
   // This dynamically/generically determines the pathPrefix by stripping the first known
   // endpoint suffix from the window location path. It works out of the box for both direct
   // hosting and reverse proxy deployments with no additional configurations required.
   let basePath = window.location.pathname;
   const paths = [
+    '/agent',
     '/graph',
     '/alerts',
     '/status',
@@ -69,25 +72,48 @@ const App: FC<AppProps> = ({ consolesLink }) => {
     >
       <Theme />
       <PathPrefixContext.Provider value={basePath}>
-        <Navigation consolesLink={consolesLink} />
-        <Container fluid style={{ paddingTop: 70 }}>
-          <Router basepath={`${basePath}`}>
-            <Redirect from="/" to={`graph`} noThrow />
-            {/*
+        <Router basename={basePath}>
+          <Navigation consolesLink={consolesLink} agentMode={agentMode} />
+          <Container fluid style={{ paddingTop: 70 }}>
+            <Switch>
+              <Redirect exact from="/" to={agentMode ? '/agent' : '/graph'} />
+              {/*
               NOTE: Any route added here needs to also be added to the list of
               React-handled router paths ("reactRouterPaths") in /web/web.go.
             */}
-            <PanelListPage path="/graph" />
-            <AlertsPage path="/alerts" />
-            <ConfigPage path="/config" />
-            <FlagsPage path="/flags" />
-            <RulesPage path="/rules" />
-            <ServiceDiscoveryPage path="/service-discovery" />
-            <StatusPage path="/status" />
-            <TSDBStatusPage path="/tsdb-status" />
-            <TargetsPage path="/targets" />
-          </Router>
-        </Container>
+              <Route path="/agent">
+                <AgentPage />
+              </Route>
+              <Route path="/graph">
+                <PanelListPage />
+              </Route>
+              <Route path="/alerts">
+                <AlertsPage />
+              </Route>
+              <Route path="/config">
+                <ConfigPage />
+              </Route>
+              <Route path="/flags">
+                <FlagsPage />
+              </Route>
+              <Route path="/rules">
+                <RulesPage />
+              </Route>
+              <Route path="/service-discovery">
+                <ServiceDiscoveryPage />
+              </Route>
+              <Route path="/status">
+                <StatusPage agentMode={agentMode} />
+              </Route>
+              <Route path="/tsdb-status">
+                <TSDBStatusPage />
+              </Route>
+              <Route path="/targets">
+                <TargetsPage />
+              </Route>
+            </Switch>
+          </Container>
+        </Router>
       </PathPrefixContext.Provider>
     </ThemeContext.Provider>
   );

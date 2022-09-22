@@ -55,7 +55,7 @@ timestamps are always represented as Unix timestamps in seconds.
 * `<series_selector>`: Prometheus [time series
 selectors](basics.md#time-series-selectors) like `http_requests_total` or
 `http_requests_total{method=~"(GET|POST)"}` and need to be URL-encoded.
-* `<duration>`: [Prometheus duration strings](basics.md#time_durations).
+* `<duration>`: [Prometheus duration strings](basics.md#time-durations).
 For example, `5m` refers to a duration of 5 minutes.
 * `<bool>`: boolean values (strings `true` and `false`).
 
@@ -203,6 +203,35 @@ $ curl 'http://localhost:9090/api/v1/query_range?query=up&start=2015-07-01T20:10
          }
       ]
    }
+}
+```
+
+## Formatting query expressions
+
+The following endpoint formats a PromQL expression in a prettified way:
+
+```
+GET /api/v1/format_query
+POST /api/v1/format_query
+```
+
+URL query parameters:
+
+- `query=<string>`: Prometheus expression query string.
+
+You can URL-encode these parameters directly in the request body by using the `POST` method and
+`Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large
+query that may breach server-side URL character limits.
+
+The `data` section of the query result is a string containing the formatted query expression. Note that any comments are removed in the formatted string.
+
+The following example formats the expression `foo/bar`:
+
+```json
+$ curl 'http://localhost:9090/api/v1/format_query?query=foo/bar'
+{
+   "status" : "success",
+   "data" : "foo / bar"
 }
 ```
 
@@ -361,7 +390,7 @@ URL query parameters:
 - `end=<rfc3339 | unix_timestamp>`: End timestamp.
 
 ```json
-$ curl -g 'http://localhost:9090/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=020-09-14T15:23:25.479Z'
+$ curl -g 'http://localhost:9090/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=2020-09-14T15:23:25.479Z'
 {
     "status": "success",
     "data": [
@@ -476,8 +505,8 @@ GET /api/v1/targets
 ```
 
 Both the active and dropped targets are part of the response by default.
-`labels` represents the label set after relabelling has occurred.
-`discoveredLabels` represent the unmodified labels retrieved during service discovery before relabelling has occurred.
+`labels` represents the label set after relabeling has occurred.
+`discoveredLabels` represent the unmodified labels retrieved during service discovery before relabeling has occurred.
 
 ```json
 $ curl http://localhost:9090/api/v1/targets
@@ -502,7 +531,9 @@ $ curl http://localhost:9090/api/v1/targets
         "lastError": "",
         "lastScrape": "2017-01-17T15:07:44.723715405+01:00",
         "lastScrapeDuration": 0.050688943,
-        "health": "up"
+        "health": "up",
+        "scrapeInterval": "1m",
+        "scrapeTimeout": "10s"
       }
     ],
     "droppedTargets": [
@@ -511,6 +542,8 @@ $ curl http://localhost:9090/api/v1/targets
           "__address__": "127.0.0.1:9100",
           "__metrics_path__": "/metrics",
           "__scheme__": "http",
+          "__scrape_interval__": "1m",
+          "__scrape_timeout__": "10s",
           "job": "node"
         },
       }
@@ -616,6 +649,7 @@ $ curl http://localhost:9090/api/v1/rules
                 ],
                 "file": "/rules.yaml",
                 "interval": 60,
+                "limit": 0,
                 "name": "example"
             }
         ]
@@ -745,7 +779,7 @@ curl -G http://localhost:9091/api/v1/targets/metadata \
 
 ## Querying metric metadata
 
-It returns metadata about metrics currently scrapped from targets. However, it does not provide any target information.
+It returns metadata about metrics currently scraped from targets. However, it does not provide any target information.
 This is considered **experimental** and might change in the future.
 
 ```
@@ -1141,3 +1175,17 @@ $ curl -XPOST http://localhost:9090/api/v1/admin/tsdb/clean_tombstones
 ```
 
 *New in v2.1 and supports PUT from v2.9*
+
+## Remote Write Receiver
+
+Prometheus can be configured as a receiver for the Prometheus remote write
+protocol. This is not considered an efficient way of ingesting samples. Use it
+with caution for specific low-volume use cases. It is not suitable for
+replacing the ingestion via scraping and turning Prometheus into a push-based
+metrics collection system.
+
+Enable the remote write receiver by setting
+`--web.enable-remote-write-receiver`. When enabled, the remote write receiver
+endpoint is `/api/v1/write`. Find more details [here](../storage.md#overview).
+
+*New in v2.33*

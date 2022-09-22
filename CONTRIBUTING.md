@@ -21,7 +21,6 @@ Prometheus uses GitHub to manage reviews of pull requests.
 
 * Be sure to sign off on the [DCO](https://github.com/probot/dco#how-it-works).
 
-
 ## Steps to Contribute
 
 Should you wish to work on an issue, please claim it first by commenting on the GitHub issue that you want to work on it. This is to prevent duplicated efforts from contributors on the same issue.
@@ -33,7 +32,8 @@ You can [spin up a prebuilt dev environment](https://gitpod.io/#https://github.c
 For complete instructions on how to compile see: [Building From Source](https://github.com/prometheus/prometheus#building-from-source)
 
 For quickly compiling and testing your changes do:
-```
+
+```bash
 # For building.
 go build ./cmd/prometheus/
 ./prometheus
@@ -52,7 +52,7 @@ All our issues are regularly tagged so that you can also filter down the issues 
 
 * Commits should be as small as possible, while ensuring that each commit is correct independently (i.e., each commit should compile and pass tests).
 
-* If your patch is not getting reviewed or you need a specific person to review it, you can @-reply a reviewer asking for a review in the pull request or a comment, or you can ask for a review on IRC channel [#prometheus](https://web.libera.chat/?channels=#prometheus) on irc.libera.chat (for the easiest start, [join via Riot](https://riot.im/app/#/room/#prometheus:matrix.org)).
+* If your patch is not getting reviewed or you need a specific person to review it, you can @-reply a reviewer asking for a review in the pull request or a comment, or you can ask for a review on the IRC channel [#prometheus-dev](https://web.libera.chat/?channels=#prometheus-dev) on irc.libera.chat (for the easiest start, [join via Element](https://app.element.io/#/room/#prometheus-dev:matrix.org)).
 
 * Add tests relevant to the fixed bug or new feature.
 
@@ -64,10 +64,10 @@ To add or update a new dependency, use the `go get` command:
 
 ```bash
 # Pick the latest tagged release.
-go get example.com/some/module/pkg
+go install example.com/some/module/pkg@latest
 
 # Pick a specific version.
-go get example.com/some/module/pkg@vX.Y.Z
+go install example.com/some/module/pkg@vX.Y.Z
 ```
 
 Tidy up the `go.mod` and `go.sum` files:

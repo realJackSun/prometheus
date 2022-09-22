@@ -15,6 +15,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -111,9 +111,8 @@ func TestClientRetryAfter(t *testing.T) {
 
 	c := getClient(conf)
 	err = c.Store(context.Background(), []byte{})
-	if _, ok := err.(RecoverableError); ok {
-		t.Fatal("recoverable error not expected")
-	}
+	_, ok := err.(RecoverableError)
+	require.False(t, ok, "Recoverable error not expected.")
 
 	conf = &ClientConfig{
 		URL:              &config_util.URL{URL: serverURL},
@@ -123,9 +122,8 @@ func TestClientRetryAfter(t *testing.T) {
 
 	c = getClient(conf)
 	err = c.Store(context.Background(), []byte{})
-	if _, ok := err.(RecoverableError); !ok {
-		t.Fatal("recoverable error was expected")
-	}
+	_, ok = err.(RecoverableError)
+	require.True(t, ok, "Recoverable error was expected.")
 }
 
 func TestRetryAfterDuration(t *testing.T) {

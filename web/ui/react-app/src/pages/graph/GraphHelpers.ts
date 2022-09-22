@@ -1,9 +1,9 @@
 import $ from 'jquery';
 
 import { escapeHTML } from '../../utils';
-import { Metric } from '../../types/types';
 import { GraphProps, GraphData, GraphSeries, GraphExemplar } from './Graph';
 import moment from 'moment-timezone';
+import { colorPool } from './ColorPool';
 
 export const formatValue = (y: number | null): string => {
   if (y === null) {
@@ -53,7 +53,7 @@ export const formatValue = (y: number | null): string => {
   throw Error("couldn't format a value, this is a bug");
 };
 
-export const getHoverColor = (color: string, opacity: number, stacked: boolean) => {
+export const getHoverColor = (color: string, opacity: number, stacked: boolean): string => {
   const { r, g, b } = $.color.parse(color);
   if (!stacked) {
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
@@ -67,10 +67,15 @@ export const getHoverColor = (color: string, opacity: number, stacked: boolean) 
   return `rgb(${Math.round(base + opacity * r)},${Math.round(base + opacity * g)},${Math.round(base + opacity * b)})`;
 };
 
-export const toHoverColor = (index: number, stacked: boolean) => (series: GraphSeries, i: number) => ({
-  ...series,
-  color: getHoverColor(series.color, i !== index ? 0.3 : 1, stacked),
-});
+export const toHoverColor =
+  (index: number, stacked: boolean) =>
+  (
+    series: GraphSeries,
+    i: number
+  ): { color: string; data: (number | null)[][]; index: number; labels: { [p: string]: string } } => ({
+    ...series,
+    color: getHoverColor(series.color, i !== index ? 0.3 : 1, stacked),
+  });
 
 export const getOptions = (stacked: boolean, useLocalTime: boolean): jquery.flot.plotOptions => {
   return {
@@ -113,8 +118,8 @@ export const getOptions = (stacked: boolean, useLocalTime: boolean): jquery.flot
               ${Object.keys(labels).length === 0 ? '<div class="mb-1 font-italic">no labels</div>' : ''}
               ${labels['__name__'] ? `<div class="mb-1"><strong>${labels['__name__']}</strong></div>` : ''}
               ${Object.keys(labels)
-                .filter(k => k !== '__name__')
-                .map(k => `<div class="mb-1"><strong>${k}</strong>: ${escapeHTML(labels[k])}</div>`)
+                .filter((k) => k !== '__name__')
+                .map((k) => `<div class="mb-1"><strong>${k}</strong>: ${escapeHTML(labels[k])}</div>`)
                 .join('')}
             </div>`;
 
@@ -153,33 +158,8 @@ export const getOptions = (stacked: boolean, useLocalTime: boolean): jquery.flot
   };
 };
 
-// This was adapted from Flot's color generation code.
-export const getColors = (data: { resultType: string; result: Array<{ metric: Metric; values: [number, string][] }> }) => {
-  const colorPool = ['#edc240', '#afd8f8', '#cb4b4b', '#4da74d', '#9440ed'];
-  const colorPoolSize = colorPool.length;
-  let variation = 0;
-  return data.result.map((_, i) => {
-    // Each time we exhaust the colors in the pool we adjust
-    // a scaling factor used to produce more variations on
-    // those colors. The factor alternates negative/positive
-    // to produce lighter/darker colors.
-
-    // Reset the variation after every few cycles, or else
-    // it will end up producing only white or black colors.
-
-    if (i % colorPoolSize === 0 && i) {
-      if (variation >= 0) {
-        variation = variation < 0.5 ? -variation - 0.2 : 0;
-      } else {
-        variation = -variation;
-      }
-    }
-    return $.color.parse(colorPool[i % colorPoolSize] || '#666').scale('rgb', 1 + variation);
-  });
-};
-
 export const normalizeData = ({ queryParams, data, exemplars, stacked }: GraphProps): GraphData => {
-  const colors = getColors(data);
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const { startTime, endTime, resolution } = queryParams!;
 
   let sum = 0;
@@ -227,13 +207,13 @@ export const normalizeData = ({ queryParams, data, exemplars, stacked }: GraphPr
 
       return {
         labels: metric !== null ? metric : {},
-        color: colors[index].toString(),
+        color: colorPool[index % colorPool.length],
         stack: stacked,
         data,
         index,
       };
     }),
-    exemplars: Object.values(buckets).flatMap(bucket => {
+    exemplars: Object.values(buckets).flatMap((bucket) => {
       if (bucket.length === 1) {
         return bucket[0];
       }
@@ -256,7 +236,7 @@ export const normalizeData = ({ queryParams, data, exemplars, stacked }: GraphPr
   };
 };
 
-export const parseValue = (value: string) => {
+export const parseValue = (value: string): null | number => {
   const val = parseFloat(value);
   // "+Inf", "-Inf", "+Inf" will be parsed into NaN by parseFloat(). They
   // can't be graphed, so show them as gaps (null).
@@ -290,7 +270,7 @@ const exemplarSymbol = (ctx: CanvasRenderingContext2D, x: number, y: number) => 
 const stdDeviation = (sum: number, values: number[]): number => {
   const avg = sum / values.length;
   let squaredAvg = 0;
-  values.map(value => (squaredAvg += (value - avg) ** 2));
+  values.map((value) => (squaredAvg += (value - avg) ** 2));
   squaredAvg = squaredAvg / values.length;
   return Math.sqrt(squaredAvg);
 };

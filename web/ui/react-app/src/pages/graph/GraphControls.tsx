@@ -1,10 +1,10 @@
 import React, { Component } from 'react';
-import { Button, ButtonGroup, Form, InputGroup, InputGroupAddon, Input } from 'reactstrap';
+import { Button, ButtonGroup, Form, Input, InputGroup, InputGroupAddon } from 'reactstrap';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faMinus, faChartArea, faChartLine } from '@fortawesome/free-solid-svg-icons';
+import { faChartArea, faChartLine, faMinus, faPlus } from '@fortawesome/free-solid-svg-icons';
 import TimeInput from './TimeInput';
-import { parseDuration, formatDuration } from '../../utils';
+import { formatDuration, parseDuration } from '../../utils';
 
 interface GraphControlsProps {
   range: number;
@@ -46,7 +46,7 @@ class GraphControls extends Component<GraphControlsProps> {
     182 * 24 * 60 * 60,
     365 * 24 * 60 * 60,
     730 * 24 * 60 * 60,
-  ].map(s => s * 1000);
+  ].map((s) => s * 1000);
 
   onChangeRangeInput = (rangeText: string): void => {
     const range = parseDuration(rangeText);
@@ -58,7 +58,9 @@ class GraphControls extends Component<GraphControlsProps> {
   };
 
   changeRangeInput = (range: number): void => {
-    this.rangeRef.current!.value = formatDuration(range);
+    if (this.rangeRef.current !== null) {
+      this.rangeRef.current.value = formatDuration(range);
+    }
   };
 
   increaseRange = (): void => {
@@ -81,18 +83,24 @@ class GraphControls extends Component<GraphControlsProps> {
     }
   };
 
-  componentDidUpdate(prevProps: GraphControlsProps) {
+  changeResolutionInput = (resolution: number | null): void => {
+    if (this.resolutionRef.current !== null) {
+      this.resolutionRef.current.value = resolution !== null ? resolution.toString() : '';
+    }
+  };
+
+  componentDidUpdate(prevProps: GraphControlsProps): void {
     if (prevProps.range !== this.props.range) {
       this.changeRangeInput(this.props.range);
     }
     if (prevProps.resolution !== this.props.resolution) {
-      this.resolutionRef.current!.value = this.props.resolution !== null ? this.props.resolution.toString() : '';
+      this.changeResolutionInput(this.props.resolution);
     }
   }
 
-  render() {
+  render(): JSX.Element {
     return (
-      <Form inline className="graph-controls" onSubmit={e => e.preventDefault()}>
+      <Form inline className="graph-controls" onSubmit={(e) => e.preventDefault()}>
         <InputGroup className="range-input" size="sm">
           <InputGroupAddon addonType="prepend">
             <Button title="Decrease range" onClick={this.decreaseRange}>
@@ -103,9 +111,13 @@ class GraphControls extends Component<GraphControlsProps> {
           <Input
             defaultValue={formatDuration(this.props.range)}
             innerRef={this.rangeRef}
-            onBlur={() => this.onChangeRangeInput(this.rangeRef.current!.value)}
+            onBlur={() => {
+              if (this.rangeRef.current) {
+                this.onChangeRangeInput(this.rangeRef.current.value);
+              }
+            }}
             onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) =>
-              e.key === 'Enter' && this.onChangeRangeInput(this.rangeRef.current!.value)
+              e.key === 'Enter' && this.rangeRef.current && this.onChangeRangeInput(this.rangeRef.current.value)
             }
           />
 
@@ -130,8 +142,10 @@ class GraphControls extends Component<GraphControlsProps> {
           defaultValue={this.props.resolution !== null ? this.props.resolution.toString() : ''}
           innerRef={this.resolutionRef}
           onBlur={() => {
-            const res = parseInt(this.resolutionRef.current!.value);
-            this.props.onChangeResolution(res ? res : null);
+            if (this.resolutionRef.current) {
+              const res = parseInt(this.resolutionRef.current.value);
+              this.props.onChangeResolution(res ? res : null);
+            }
           }}
           bsSize="sm"
         />

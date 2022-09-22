@@ -16,9 +16,9 @@ package wal
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -26,51 +26,48 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 )
 
 func TestLastCheckpoint(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test_checkpoint")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(dir))
-	}()
+	dir := t.TempDir()
 
-	_, _, err = LastCheckpoint(dir)
+	_, _, err := LastCheckpoint(dir)
 	require.Equal(t, record.ErrNotFound, err)
 
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.0000"), 0777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.0000"), 0o777))
 	s, k, err := LastCheckpoint(dir)
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(dir, "checkpoint.0000"), s)
 	require.Equal(t, 0, k)
 
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.xyz"), 0777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.xyz"), 0o777))
 	s, k, err = LastCheckpoint(dir)
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(dir, "checkpoint.0000"), s)
 	require.Equal(t, 0, k)
 
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.1"), 0777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.1"), 0o777))
 	s, k, err = LastCheckpoint(dir)
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(dir, "checkpoint.1"), s)
 	require.Equal(t, 1, k)
 
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.1000"), 0777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.1000"), 0o777))
 	s, k, err = LastCheckpoint(dir)
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(dir, "checkpoint.1000"), s)
 	require.Equal(t, 1000, k)
 
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.99999999"), 0777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.99999999"), 0o777))
 	s, k, err = LastCheckpoint(dir)
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(dir, "checkpoint.99999999"), s)
 	require.Equal(t, 99999999, k)
 
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.100000000"), 0777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.100000000"), 0o777))
 	s, k, err = LastCheckpoint(dir)
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(dir, "checkpoint.100000000"), s)
@@ -78,22 +75,18 @@ func TestLastCheckpoint(t *testing.T) {
 }
 
 func TestDeleteCheckpoints(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test_checkpoint")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(dir))
-	}()
+	dir := t.TempDir()
 
 	require.NoError(t, DeleteCheckpoints(dir, 0))
 
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.00"), 0777))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.01"), 0777))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.02"), 0777))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.03"), 0777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.00"), 0o777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.01"), 0o777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.02"), 0o777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.03"), 0o777))
 
 	require.NoError(t, DeleteCheckpoints(dir, 2))
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	fns := []string{}
 	for _, f := range files {
@@ -101,13 +94,13 @@ func TestDeleteCheckpoints(t *testing.T) {
 	}
 	require.Equal(t, []string{"checkpoint.02", "checkpoint.03"}, fns)
 
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.99999999"), 0777))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.100000000"), 0777))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.100000001"), 0777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.99999999"), 0o777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.100000000"), 0o777))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoint.100000001"), 0o777))
 
 	require.NoError(t, DeleteCheckpoints(dir, 100000000))
 
-	files, err = ioutil.ReadDir(dir)
+	files, err = os.ReadDir(dir)
 	require.NoError(t, err)
 	fns = []string{}
 	for _, f := range files {
@@ -119,11 +112,7 @@ func TestDeleteCheckpoints(t *testing.T) {
 func TestCheckpoint(t *testing.T) {
 	for _, compress := range []bool{false, true} {
 		t.Run(fmt.Sprintf("compress=%t", compress), func(t *testing.T) {
-			dir, err := ioutil.TempDir("", "test_checkpoint")
-			require.NoError(t, err)
-			defer func() {
-				require.NoError(t, os.RemoveAll(dir))
-			}()
+			dir := t.TempDir()
 
 			var enc record.Encoder
 			// Create a dummy segment to bump the initial number.
@@ -165,6 +154,14 @@ func TestCheckpoint(t *testing.T) {
 						{Ref: 5, Labels: labels.FromStrings("a", "b", "c", "5")},
 					}, nil)
 					require.NoError(t, w.Log(b))
+
+					b = enc.Metadata([]record.RefMetadata{
+						{Ref: 2, Unit: "unit", Help: "help"},
+						{Ref: 3, Unit: "unit", Help: "help"},
+						{Ref: 4, Unit: "unit", Help: "help"},
+						{Ref: 5, Unit: "unit", Help: "help"},
+					}, nil)
+					require.NoError(t, w.Log(b))
 				}
 				// Write samples until the WAL has enough segments.
 				// Make them have drifting timestamps within a record to see that they
@@ -182,11 +179,21 @@ func TestCheckpoint(t *testing.T) {
 				}, nil)
 				require.NoError(t, w.Log(b))
 
+				// Write changing metadata for each series. In the end, only the latest
+				// version should end up in the checkpoint.
+				b = enc.Metadata([]record.RefMetadata{
+					{Ref: 0, Unit: fmt.Sprintf("%d", last), Help: fmt.Sprintf("%d", last)},
+					{Ref: 1, Unit: fmt.Sprintf("%d", last), Help: fmt.Sprintf("%d", last)},
+					{Ref: 2, Unit: fmt.Sprintf("%d", last), Help: fmt.Sprintf("%d", last)},
+					{Ref: 3, Unit: fmt.Sprintf("%d", last), Help: fmt.Sprintf("%d", last)},
+				}, nil)
+				require.NoError(t, w.Log(b))
+
 				last += 100
 			}
 			require.NoError(t, w.Close())
 
-			_, err = Checkpoint(log.NewNopLogger(), w, 100, 106, func(x uint64) bool {
+			_, err = Checkpoint(log.NewNopLogger(), w, 100, 106, func(x chunks.HeadSeriesRef) bool {
 				return x%2 == 0
 			}, last/2)
 			require.NoError(t, err)
@@ -194,7 +201,7 @@ func TestCheckpoint(t *testing.T) {
 			require.NoError(t, DeleteCheckpoints(w.Dir(), 106))
 
 			// Only the new checkpoint should be left.
-			files, err := ioutil.ReadDir(dir)
+			files, err := os.ReadDir(dir)
 			require.NoError(t, err)
 			require.Equal(t, 1, len(files))
 			require.Equal(t, "checkpoint.00000106", files[0].Name())
@@ -205,6 +212,7 @@ func TestCheckpoint(t *testing.T) {
 
 			var dec record.Decoder
 			var series []record.RefSeries
+			var metadata []record.RefMetadata
 			r := NewReader(sr)
 
 			for r.Next() {
@@ -226,34 +234,44 @@ func TestCheckpoint(t *testing.T) {
 					for _, e := range exemplars {
 						require.GreaterOrEqual(t, e.T, last/2, "exemplar with wrong timestamp")
 					}
+				case record.Metadata:
+					metadata, err = dec.Metadata(rec, metadata)
+					require.NoError(t, err)
 				}
 			}
 			require.NoError(t, r.Err())
-			require.Equal(t, []record.RefSeries{
+
+			expectedRefSeries := []record.RefSeries{
 				{Ref: 0, Labels: labels.FromStrings("a", "b", "c", "0")},
 				{Ref: 2, Labels: labels.FromStrings("a", "b", "c", "2")},
 				{Ref: 4, Labels: labels.FromStrings("a", "b", "c", "4")},
-			}, series)
+			}
+			require.Equal(t, expectedRefSeries, series)
+
+			expectedRefMetadata := []record.RefMetadata{
+				{Ref: 0, Unit: fmt.Sprintf("%d", last-100), Help: fmt.Sprintf("%d", last-100)},
+				{Ref: 2, Unit: fmt.Sprintf("%d", last-100), Help: fmt.Sprintf("%d", last-100)},
+				{Ref: 4, Unit: "unit", Help: "help"},
+			}
+			sort.Slice(metadata, func(i, j int) bool { return metadata[i].Ref < metadata[j].Ref })
+			require.Equal(t, expectedRefMetadata, metadata)
 		})
 	}
 }
 
 func TestCheckpointNoTmpFolderAfterError(t *testing.T) {
 	// Create a new wal with invalid data.
-	dir, err := ioutil.TempDir("", "test_checkpoint")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(dir))
-	}()
+	dir := t.TempDir()
 	w, err := NewSize(nil, nil, dir, 64*1024, false)
 	require.NoError(t, err)
 	var enc record.Encoder
 	require.NoError(t, w.Log(enc.Series([]record.RefSeries{
-		{Ref: 0, Labels: labels.FromStrings("a", "b", "c", "2")}}, nil)))
+		{Ref: 0, Labels: labels.FromStrings("a", "b", "c", "2")},
+	}, nil)))
 	require.NoError(t, w.Close())
 
 	// Corrupt data.
-	f, err := os.OpenFile(filepath.Join(w.Dir(), "00000000"), os.O_WRONLY, 0666)
+	f, err := os.OpenFile(filepath.Join(w.Dir(), "00000000"), os.O_WRONLY, 0o666)
 	require.NoError(t, err)
 	_, err = f.WriteAt([]byte{42}, 1)
 	require.NoError(t, err)
@@ -266,7 +284,7 @@ func TestCheckpointNoTmpFolderAfterError(t *testing.T) {
 	// Walk the wal dir to make sure there are no tmp folder left behind after the error.
 	err = filepath.Walk(w.Dir(), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return errors.Wrapf(err, "access err %q: %v\n", path, err)
+			return errors.Wrapf(err, "access err %q: %v", path, err)
 		}
 		if info.IsDir() && strings.HasSuffix(info.Name(), ".tmp") {
 			return fmt.Errorf("wal dir contains temporary folder:%s", info.Name())

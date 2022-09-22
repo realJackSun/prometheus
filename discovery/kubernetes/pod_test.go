@@ -50,7 +50,8 @@ func makeMultiPortPods() *v1.Pod {
 			NodeName: "testnode",
 			Containers: []v1.Container{
 				{
-					Name: "testcontainer0",
+					Name:  "testcontainer0",
+					Image: "testcontainer0:latest",
 					Ports: []v1.ContainerPort{
 						{
 							Name:          "testport0",
@@ -65,7 +66,8 @@ func makeMultiPortPods() *v1.Pod {
 					},
 				},
 				{
-					Name: "testcontainer1",
+					Name:  "testcontainer1",
+					Image: "testcontainer1:latest",
 				},
 			},
 		},
@@ -94,7 +96,8 @@ func makePods() *v1.Pod {
 			NodeName: "testnode",
 			Containers: []v1.Container{
 				{
-					Name: "testcontainer",
+					Name:  "testcontainer",
+					Image: "testcontainer:latest",
 					Ports: []v1.ContainerPort{
 						{
 							Name:          "testport",
@@ -130,7 +133,8 @@ func makeInitContainerPods() *v1.Pod {
 			NodeName: "testnode",
 			Containers: []v1.Container{
 				{
-					Name: "testcontainer",
+					Name:  "testcontainer",
+					Image: "testcontainer:latest",
 					Ports: []v1.ContainerPort{
 						{
 							Name:          "testport",
@@ -143,7 +147,8 @@ func makeInitContainerPods() *v1.Pod {
 
 			InitContainers: []v1.Container{
 				{
-					Name: "initcontainer",
+					Name:  "initcontainer",
+					Image: "initcontainer:latest",
 				},
 			},
 		},
@@ -169,6 +174,7 @@ func expectedPodTargetGroups(ns string) map[string]*targetgroup.Group {
 				{
 					"__address__":                                   "1.2.3.4:9000",
 					"__meta_kubernetes_pod_container_name":          "testcontainer",
+					"__meta_kubernetes_pod_container_image":         "testcontainer:latest",
 					"__meta_kubernetes_pod_container_port_name":     "testport",
 					"__meta_kubernetes_pod_container_port_number":   "9000",
 					"__meta_kubernetes_pod_container_port_protocol": "TCP",
@@ -190,6 +196,19 @@ func expectedPodTargetGroups(ns string) map[string]*targetgroup.Group {
 	}
 }
 
+func expectedPodTargetGroupsWithNodeMeta(ns, nodeName string, nodeLabels map[string]string) map[string]*targetgroup.Group {
+	result := expectedPodTargetGroups(ns)
+	for _, tg := range result {
+		tg.Labels["__meta_kubernetes_node_name"] = lv(nodeName)
+		for k, v := range nodeLabels {
+			tg.Labels[model.LabelName("__meta_kubernetes_node_label_"+k)] = lv(v)
+			tg.Labels[model.LabelName("__meta_kubernetes_node_labelpresent_"+k)] = lv("true")
+		}
+	}
+
+	return result
+}
+
 func TestPodDiscoveryBeforeRun(t *testing.T) {
 	n, c := makeDiscovery(RolePod, NamespaceDiscovery{})
 
@@ -206,6 +225,7 @@ func TestPodDiscoveryBeforeRun(t *testing.T) {
 					{
 						"__address__":                                   "1.2.3.4:9000",
 						"__meta_kubernetes_pod_container_name":          "testcontainer0",
+						"__meta_kubernetes_pod_container_image":         "testcontainer0:latest",
 						"__meta_kubernetes_pod_container_port_name":     "testport0",
 						"__meta_kubernetes_pod_container_port_number":   "9000",
 						"__meta_kubernetes_pod_container_port_protocol": "TCP",
@@ -214,15 +234,17 @@ func TestPodDiscoveryBeforeRun(t *testing.T) {
 					{
 						"__address__":                                   "1.2.3.4:9001",
 						"__meta_kubernetes_pod_container_name":          "testcontainer0",
+						"__meta_kubernetes_pod_container_image":         "testcontainer0:latest",
 						"__meta_kubernetes_pod_container_port_name":     "testport1",
 						"__meta_kubernetes_pod_container_port_number":   "9001",
 						"__meta_kubernetes_pod_container_port_protocol": "UDP",
 						"__meta_kubernetes_pod_container_init":          "false",
 					},
 					{
-						"__address__":                          "1.2.3.4",
-						"__meta_kubernetes_pod_container_name": "testcontainer1",
-						"__meta_kubernetes_pod_container_init": "false",
+						"__address__":                           "1.2.3.4",
+						"__meta_kubernetes_pod_container_name":  "testcontainer1",
+						"__meta_kubernetes_pod_container_image": "testcontainer1:latest",
+						"__meta_kubernetes_pod_container_init":  "false",
 					},
 				},
 				Labels: model.LabelSet{
@@ -254,9 +276,10 @@ func TestPodDiscoveryInitContainer(t *testing.T) {
 	key := fmt.Sprintf("pod/%s/testpod", ns)
 	expected := expectedPodTargetGroups(ns)
 	expected[key].Targets = append(expected[key].Targets, model.LabelSet{
-		"__address__":                          "1.2.3.4",
-		"__meta_kubernetes_pod_container_name": "initcontainer",
-		"__meta_kubernetes_pod_container_init": "true",
+		"__address__":                           "1.2.3.4",
+		"__meta_kubernetes_pod_container_name":  "initcontainer",
+		"__meta_kubernetes_pod_container_image": "initcontainer:latest",
+		"__meta_kubernetes_pod_container_init":  "true",
 	})
 	expected[key].Labels["__meta_kubernetes_pod_phase"] = "Pending"
 	expected[key].Labels["__meta_kubernetes_pod_ready"] = "false"
@@ -316,7 +339,8 @@ func TestPodDiscoveryUpdate(t *testing.T) {
 			NodeName: "testnode",
 			Containers: []v1.Container{
 				{
-					Name: "testcontainer",
+					Name:  "testcontainer",
+					Image: "testcontainer:latest",
 					Ports: []v1.ContainerPort{
 						{
 							Name:          "testport",
@@ -387,5 +411,66 @@ func TestPodDiscoveryNamespaces(t *testing.T) {
 		},
 		expectedMaxItems: 2,
 		expectedRes:      expected,
+	}.Run(t)
+}
+
+func TestPodDiscoveryOwnNamespace(t *testing.T) {
+	n, c := makeDiscovery(RolePod, NamespaceDiscovery{IncludeOwnNamespace: true})
+
+	expected := expectedPodTargetGroups("own-ns")
+	k8sDiscoveryTest{
+		discovery: n,
+		beforeRun: func() {
+			for _, ns := range []string{"own-ns", "non-own-ns"} {
+				pod := makePods()
+				pod.Namespace = ns
+				c.CoreV1().Pods(pod.Namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+			}
+		},
+		expectedMaxItems: 1,
+		expectedRes:      expected,
+	}.Run(t)
+}
+
+func TestPodDiscoveryWithNodeMetadata(t *testing.T) {
+	attachMetadata := AttachMetadataConfig{Node: true}
+	n, c := makeDiscoveryWithMetadata(RolePod, NamespaceDiscovery{}, attachMetadata)
+	nodeLbls := map[string]string{"l1": "v1"}
+
+	k8sDiscoveryTest{
+		discovery: n,
+		afterStart: func() {
+			nodes := makeNode("testnode", "", "", nodeLbls, nil)
+			c.CoreV1().Nodes().Create(context.Background(), nodes, metav1.CreateOptions{})
+
+			pods := makePods()
+			c.CoreV1().Pods(pods.Namespace).Create(context.Background(), pods, metav1.CreateOptions{})
+		},
+		expectedMaxItems: 2,
+		expectedRes:      expectedPodTargetGroupsWithNodeMeta("default", "testnode", nodeLbls),
+	}.Run(t)
+}
+
+func TestPodDiscoveryWithNodeMetadataUpdateNode(t *testing.T) {
+	nodeLbls := map[string]string{"l2": "v2"}
+	attachMetadata := AttachMetadataConfig{Node: true}
+	n, c := makeDiscoveryWithMetadata(RolePod, NamespaceDiscovery{}, attachMetadata)
+
+	k8sDiscoveryTest{
+		discovery: n,
+		beforeRun: func() {
+			oldNodeLbls := map[string]string{"l1": "v1"}
+			nodes := makeNode("testnode", "", "", oldNodeLbls, nil)
+			c.CoreV1().Nodes().Create(context.Background(), nodes, metav1.CreateOptions{})
+		},
+		afterStart: func() {
+			pods := makePods()
+			c.CoreV1().Pods(pods.Namespace).Create(context.Background(), pods, metav1.CreateOptions{})
+
+			nodes := makeNode("testnode", "", "", nodeLbls, nil)
+			c.CoreV1().Nodes().Update(context.Background(), nodes, metav1.UpdateOptions{})
+		},
+		expectedMaxItems: 2,
+		expectedRes:      expectedPodTargetGroupsWithNodeMeta("default", "testnode", nodeLbls),
 	}.Run(t)
 }
