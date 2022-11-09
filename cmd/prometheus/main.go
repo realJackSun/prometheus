@@ -904,8 +904,21 @@ func main() {
 	{
 		// Reload handler.
 
-		// Make sure that sighup handler is registered with a redirect to the channel before the potentially
-		// long and synchronous tsdb init.
+		// 配置动态加载：通过监听kill -HUP pid信号和curl -XPOST http://ip:9090/-/reload方式实现配置动态加载
+		// chan是golang中的一种通道，可读可写，通过共享内存而实现通信，
+		////开辟缓冲区为20的chan
+		//ch1:=make(chan int,20)
+		////无缓冲区的chan
+		//ch2:=make(chan int)
+		////只能向chan内写
+		//ch3:=make( chan<-int,20)
+		//ch3 := make(chan<- int, 20)
+		//ch3 <- 10
+		//ch3 <- 20
+		//fmt.Println(len(ch3))
+		////只能从chan内读
+		//ch4:=make(ch<-chan int,20)
+
 		hup := make(chan os.Signal, 1)
 		signal.Notify(hup, syscall.SIGHUP)
 		cancel := make(chan struct{})
@@ -915,6 +928,8 @@ func main() {
 
 				for {
 					select {
+					// 如果配置文件之中，发生了改动，则会触发Prometheus Server的reload动作。
+					// 重新加载Config
 					case <-hup:
 						if err := reloadConfig(cfg.configFile, cfg.enableExpandExternalLabels, cfg.tsdb.EnableExemplarStorage, logger, noStepSubqueryInterval, reloaders...); err != nil {
 							level.Error(logger).Log("msg", "Error reloading config", "err", err)

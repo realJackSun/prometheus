@@ -15,6 +15,7 @@ package eureka
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -41,6 +42,15 @@ func testUpdateServices(respHandler http.HandlerFunc) ([]*targetgroup.Group, err
 	}
 
 	return md.refresh(context.Background())
+}
+
+func TestMake(t *testing.T) {
+	a := make([]int, 0)
+	n := 20
+	for i := 0; i < n; i++ {
+		a = append(a, 1)
+		fmt.Printf("len=%d cap=%d\n", len(a), cap(a))
+	}
 }
 
 func TestEurekaSDHandleError(t *testing.T) {

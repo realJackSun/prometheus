@@ -402,8 +402,9 @@ func (c *GlobalConfig) isZero() bool {
 }
 
 // ScrapeConfig configures a scraping unit for Prometheus.
+// ScrapeConfig定义了一个抓取单元
 type ScrapeConfig struct {
-	// The job name to which the job label is set by default.
+	// Job的名字
 	JobName string `yaml:"job_name"`
 	// Indicator whether the scraped metrics should remain unmodified.
 	HonorLabels bool `yaml:"honor_labels,omitempty"`

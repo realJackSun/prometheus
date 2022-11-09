@@ -147,24 +147,39 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	}
 
 	for _, app := range apps.Applications {
+		// 输入：一个Applicaiton（包含大量的实例）
+		// 输出：每个实例的label
 		targets := targetsForApp(&app)
 		tg.Targets = append(tg.Targets, targets...)
 	}
 	return []*targetgroup.Group{tg}, nil
 }
 
+// 输入：一个Applicaiton（包含大量的实例）
+// 输出：每个实例的label
 func targetsForApp(app *Application) []model.LabelSet {
+	// 例子：app : 1.1.1.1:80 2.2.2.2:8080
 	targets := make([]model.LabelSet, 0, len(app.Instances))
 
 	// Gather info about the app's 'instances'. Each instance is considered a task.
 	for _, t := range app.Instances {
+		// t: 1.1.1.1:80
 		var targetAddress string
 		if t.Port != nil {
+			// t.Port: 80
 			targetAddress = net.JoinHostPort(t.HostName, strconv.Itoa(t.Port.Port))
+			// targetAddress: 1.1.1.1:80
 		} else {
 			targetAddress = net.JoinHostPort(t.HostName, "80")
 		}
 
+		// A LabelSet is a collection of LabelName and LabelValue pairs.  The LabelSet
+		// may be fully-qualified down to the point where it may resolve to a single
+		// Metric in the data store or not.  All operations that occur within the realm
+		// of a LabelSet can emit a vector of Metric entities to which the LabelSet may
+		// match.
+		// 由具体Discoverer实现为目标定义的一组标签，以kubernetes的Pod为例，包括Pod的IP、地址
+		// 例子：1.1.1.1:80这个目标上打的一系列标签
 		target := model.LabelSet{
 			model.AddressLabel:  lv(targetAddress),
 			model.InstanceLabel: lv(t.InstanceID),
